@@ -1,0 +1,38 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kraken.Agent", "Kraken.Agent\Kraken.Agent.csproj", "{C240FDC9-947B-4B9A-8B36-4857C38F9F43}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kraken.Agent.Installer", "Kraken.Agent.Installer\Kraken.Agent.Installer.csproj", "{9B6016A6-CB2B-4F2E-8B84-AD245CFEC023}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kraken.Cli", "Kraken.Cli\Kraken.Cli.csproj", "{B622B9E3-2B98-48B0-8F43-B7EB4AAA72FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kraken.Shared", "Kraken.Shared\Kraken.Shared.csproj", "{7179B44C-054F-4E1D-A59B-D6261029E73E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Github", "Github", "{84D7E8F4-71FA-4655-A1DE-7B15DE4A531F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C240FDC9-947B-4B9A-8B36-4857C38F9F43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C240FDC9-947B-4B9A-8B36-4857C38F9F43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C240FDC9-947B-4B9A-8B36-4857C38F9F43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C240FDC9-947B-4B9A-8B36-4857C38F9F43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B6016A6-CB2B-4F2E-8B84-AD245CFEC023}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B6016A6-CB2B-4F2E-8B84-AD245CFEC023}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B6016A6-CB2B-4F2E-8B84-AD245CFEC023}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B6016A6-CB2B-4F2E-8B84-AD245CFEC023}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B622B9E3-2B98-48B0-8F43-B7EB4AAA72FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B622B9E3-2B98-48B0-8F43-B7EB4AAA72FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B622B9E3-2B98-48B0-8F43-B7EB4AAA72FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B622B9E3-2B98-48B0-8F43-B7EB4AAA72FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7179B44C-054F-4E1D-A59B-D6261029E73E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7179B44C-054F-4E1D-A59B-D6261029E73E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7179B44C-054F-4E1D-A59B-D6261029E73E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7179B44C-054F-4E1D-A59B-D6261029E73E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+	EndGlobalSection
+EndGlobal

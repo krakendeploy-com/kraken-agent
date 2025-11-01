@@ -1,0 +1,13 @@
+{
+  "Agent": {
+    "Id": "<AgentId>>",
+    "WorkspaceId": "<WorkspaceId>",
+    "OrganizationId": "<OrgId>"
+  },
+  "AgentApi": {
+    "Url": "http://agent-api.krakendeploy.com"
+  },
+  "Auth": {
+    "Url": "http://auth.krakendeploy.com"
+  }
+}
