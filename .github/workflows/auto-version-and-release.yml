@@ -72,7 +72,7 @@ jobs:
             installer_artifact_name: Kraken.Agent.Installer-win-x64.zip
 
     env:
-      BUILD_NUMBER: ${{ needs.version.outputs.version }} # 1.2.3
+      BUILD_NUMBER: ${{ needs.version.outputs.version }} # 1.2.3 (no 'v')
 
     steps:
       - name: Checkout code
@@ -91,7 +91,7 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      # --- Auth to GitHub Packages (Linux/macOS) ---
+      # --- Auth to GitHub Packages (Unix) ---
       - name: Authenticate to GitHub Packages (NuGet) [Unix]
         if: runner.os != 'Windows'
         shell: bash
@@ -100,7 +100,7 @@ jobs:
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --name "github" --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}" --store-password-in-clear-text
           dotnet nuget list source
 
-      # --- Auth to GitHub Packages (Windows/PowerShell) ---
+      # --- Auth to GitHub Packages (Windows) ---
       - name: Authenticate to GitHub Packages (NuGet) [Windows]
         if: runner.os == 'Windows'
         shell: pwsh
@@ -109,27 +109,54 @@ jobs:
           dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --name "github" --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}" --store-password-in-clear-text
           dotnet nuget list source
 
-      # -------- Publish Agent --------
-      - name: Publish Agent
+      # -------- Publish Agent (Unix) --------
+      - name: Publish Agent [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          echo "Building Kraken.Agent for ${{ matrix.platform }} - Version $BUILD_NUMBER"
+          echo "Building Kraken.Agent for ${{ matrix.platform }} - Version ${BUILD_NUMBER}"
           OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
           mkdir -p "$OUT_DIR"
-          dotnet publish "${{ env.AGENT_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$BUILD_NUMBER -o "$OUT_DIR"
-          echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
+          dotnet publish "${{ env.AGENT_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=${BUILD_NUMBER} -o "$OUT_DIR"
+          echo "${BUILD_NUMBER}" > "$OUT_DIR/version.txt"
 
-      # -------- Publish Installer --------
-      - name: Publish Installer
+      # -------- Publish Agent (Windows) --------
+      - name: Publish Agent [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          echo "Building Kraken.Agent.Installer for ${{ matrix.platform }} - Version $BUILD_NUMBER"
+          Write-Host "Building Kraken.Agent for $env:RUNNER_OS - RID ${{ matrix.platform }} - Version $env:BUILD_NUMBER"
+          $outDir = "$env:RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          dotnet publish "${{ env.AGENT_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$env:BUILD_NUMBER -o "$outDir"
+          Set-Content -Path (Join-Path $outDir 'version.txt') -Value $env:BUILD_NUMBER
+
+      # -------- Publish Installer (Unix) --------
+      - name: Publish Installer [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          echo "Building Kraken.Agent.Installer for ${{ matrix.platform }} - Version ${BUILD_NUMBER}"
           OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
           mkdir -p "$OUT_DIR"
-          dotnet publish "${{ env.INSTALLER_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$BUILD_NUMBER -o "$OUT_DIR"
-          echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
+          dotnet publish "${{ env.INSTALLER_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=${BUILD_NUMBER} -o "$OUT_DIR"
+          echo "${BUILD_NUMBER}" > "$OUT_DIR/version.txt"
+
+      # -------- Publish Installer (Windows) --------
+      - name: Publish Installer [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "Building Kraken.Agent.Installer for $env:RUNNER_OS - RID ${{ matrix.platform }} - Version $env:BUILD_NUMBER"
+          $outDir = "$env:RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          dotnet publish "${{ env.INSTALLER_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$env:BUILD_NUMBER -o "$outDir"
+          Set-Content -Path (Join-Path $outDir 'version.txt') -Value $env:BUILD_NUMBER
 
       # -------- Zip (Unix) --------
       - name: Zip artifacts (Unix)
         if: runner.os != 'Windows'
+        shell: bash
         run: |
           AGENT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
           INSTALLER_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
