@@ -231,11 +231,6 @@ jobs:
             echo "- **Linux ARM64**: \`Kraken.Agent.Installer-linux-arm64.zip\`"
             echo "- **Windows x64**: \`Kraken.Agent.Installer-win-x64.zip\`"
             echo
-            echo "### Installation"
-            echo "1. Download the appropriate package for your platform"
-            echo "2. Extract the ZIP file"
-            echo "3. Run the installer executable"
-            echo
             echo "## Changes"
             echo
             if [ -z "$PREV_TAG" ]; then
