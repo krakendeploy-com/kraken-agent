@@ -231,6 +231,12 @@ jobs:
             echo "- **Linux ARM64**: \`Kraken.Agent.Installer-linux-arm64.zip\`"
             echo "- **Windows x64**: \`Kraken.Agent.Installer-win-x64.zip\`"
             echo
+            echo
+            echo "### Latest (always points to newest)"
+            echo "- Linux x64: https://github.com/${{ github.repository }}/releases/latest/download/Kraken.Agent.Installer-linux-x64.zip"
+            echo "- Linux ARM64: https://github.com/${{ github.repository }}/releases/latest/download/Kraken.Agent.Installer-linux-arm64.zip"
+            echo "- Windows x64: https://github.com/${{ github.repository }}/releases/latest/download/Kraken.Agent.Installer-win-x64.zip"
+          
             echo "## Changes"
             echo
             if [ -z "$PREV_TAG" ]; then

@@ -9,6 +9,7 @@ public sealed class AuthState
     public string RefreshToken { get; set; } = string.Empty;
 }
 
+
 public static class AgentState
 {
     public static AuthState Current { get; } = new();
