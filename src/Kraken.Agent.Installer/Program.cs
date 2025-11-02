@@ -37,7 +37,7 @@ internal class Program
 
         var tmpFolder = CreateTemporaryFolder();
         var zipPath = Path.Combine(tmpFolder, "agent.zip");
-        var sourceZipUrl = $"TBA/Kraken.Agent-{platform}.zip";
+        var sourceZipUrl = $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent-{platform}.zip";
 
         try
         {
