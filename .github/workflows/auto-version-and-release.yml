@@ -1,24 +1,26 @@
-# .github/workflows/release-agent-like-models.yml
 name: Tag & release Kraken.Agent on master merge
 
 on:
   push:
     branches: [ master ]
-    # Limit to agent-related changes if you like
     paths:
       - 'src/Kraken.Agent/**'
-      - 'src/Kraken.Installer/**'
+      - 'src/Kraken.Agent.Installer/**'
+  workflow_dispatch: {}
 
 permissions:
   contents: write
-  packages: write
+  packages: read
 
 env:
   DOTNET_VERSION: '9.0.x'
+  AGENT_CSPROJ: src/Kraken.Agent/Kraken.Agent.csproj
+  INSTALLER_CSPROJ: src/Kraken.Agent.Installer/Kraken.Agent.Installer.csproj
 
 jobs:
   version:
     name: Determine next version & create local tag
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.ver.outputs.next }}
@@ -67,12 +69,16 @@ jobs:
             agent_artifact_name: Kraken.Agent-win-x64.zip
             installer_artifact_name: Kraken.Agent.Installer-win-x64.zip
 
+    env:
+      BUILD_NUMBER: ${{ needs.version.outputs.version }} # 1.2.3 (no 'v')
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # (Re)create the local tag so this job also sees it
+      # Recreate the local tag in this job so dotnet can see it (if you use MinVer)
       - name: Restore local tag
         run: |
           git config user.name  "github-actions[bot]"
@@ -83,40 +89,79 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-          source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
-        env:
-          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Agent
-        shell: bash
-        working-directory: ./scripts
-        env:
-          BUILD_NUMBER: ${{ needs.version.outputs.version }}   # 1.2.3 (no 'v')
+      - name: Authenticate to GitHub Packages (NuGet)
         run: |
-          chmod +x "build-agent-${{ matrix.platform }}.sh"
-          ./build-agent-${{ matrix.platform }}.sh
+          dotnet nuget remove source github || true
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+            --name "github" \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text
+          dotnet nuget list source
 
-      - name: Build Installer
-        shell: bash
-        working-directory: ./scripts
-        env:
-          BUILD_NUMBER: ${{ needs.version.outputs.version }}
+      # -------- Publish Agent --------
+      - name: Publish Agent
         run: |
-          chmod +x "build-agent-installer-${{ matrix.platform }}.sh"
-          ./build-agent-installer-${{ matrix.platform }}.sh
+          echo "Building Kraken.Agent for ${{ matrix.platform }} - Version $BUILD_NUMBER"
+          OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
+          mkdir -p "$OUT_DIR"
+          dotnet publish "${{ env.AGENT_CSPROJ }}" \
+            -c Release -r ${{ matrix.platform }} \
+            -p:Version=$BUILD_NUMBER \
+            -o "$OUT_DIR"
+          echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
+          echo "Agent out: $OUT_DIR"
+
+      # -------- Publish Installer --------
+      - name: Publish Installer
+        run: |
+          echo "Building Kraken.Agent.Installer for ${{ matrix.platform }} - Version $BUILD_NUMBER"
+          OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
+          mkdir -p "$OUT_DIR"
+          dotnet publish "${{ env.INSTALLER_CSPROJ }}" \
+            -c Release -r ${{ matrix.platform }} \
+            -p:Version=$BUILD_NUMBER \
+            -o "$OUT_DIR"
+          echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
+          echo "Installer out: $OUT_DIR"
+
+      # -------- Zip (Unix) --------
+      - name: Zip artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          AGENT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
+          INSTALLER_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
+          mkdir -p "$RUNNER_TEMP/zips"
+          (cd "$AGENT_DIR" && zip -r "$RUNNER_TEMP/zips/${{ matrix.agent_artifact_name }}" .)
+          (cd "$INSTALLER_DIR" && zip -r "$RUNNER_TEMP/zips/${{ matrix.installer_artifact_name }}" .)
+          ls -l "$RUNNER_TEMP/zips"
+
+      # -------- Zip (Windows) --------
+      - name: Zip artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $agentDir     = "$env:RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
+          $installerDir = "$env:RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
+          $zipRoot      = "$env:RUNNER_TEMP/zips"
+          New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
+          Compress-Archive -Path "$agentDir/*" -DestinationPath (Join-Path $zipRoot "${{ matrix.agent_artifact_name }}") -Force
+          Compress-Archive -Path "$installerDir/*" -DestinationPath (Join-Path $zipRoot "${{ matrix.installer_artifact_name }}") -Force
+          Get-ChildItem $zipRoot
 
       - name: Upload Agent artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.agent_artifact_name }}
-          path: scripts/build/${{ matrix.agent_artifact_name }}
+          path: ${{ runner.temp }}/zips/${{ matrix.agent_artifact_name }}
           retention-days: 90
 
       - name: Upload Installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.installer_artifact_name }}
-          path: scripts/build/${{ matrix.installer_artifact_name }}
+          path: ${{ runner.temp }}/zips/${{ matrix.installer_artifact_name }}
           retention-days: 90
 
   release:
@@ -128,7 +173,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Recreate tag in this job and push it only now (after build succeeded)
+      # Push the tag only after successful builds
       - name: Push tag to origin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,7 +181,6 @@ jobs:
           set -e
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # re-tag locally (no-op if identical)
           git tag -a "${{ needs.version.outputs.tag }}" -m "Release ${{ needs.version.outputs.tag }}" || true
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push origin "${{ needs.version.outputs.tag }}"
@@ -187,7 +231,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version.outputs.tag }}       # vX.Y.Z
+          tag_name: ${{ needs.version.outputs.tag }}     # vX.Y.Z
           name: Release ${{ needs.version.outputs.tag }}
           body_path: changelog.md
           files: artifacts/**/*.zip
