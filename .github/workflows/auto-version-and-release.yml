@@ -3,21 +3,21 @@ name: Auto Version and Release
 on:
   push:
     branches:
-      - master  # Change to your main branch name if different
+      - master  # change if your default branch is 'main'
   workflow_dispatch:
     inputs:
       bump:
         description: 'Version bump type'
         required: true
         type: choice
-        options:
-          - patch
-          - minor
-          - major
+        options: [patch, minor, major]
         default: 'patch'
 
+permissions:
+  contents: write
+
 env:
-  DOTNET_VERSION: '8.0.x'
+  DOTNET_VERSION: '9.0.x'
 
 jobs:
   version-and-build:
@@ -26,37 +26,34 @@ jobs:
     outputs:
       new_version: ${{ steps.version.outputs.new_version }}
       should_release: ${{ steps.check_release.outputs.should_release }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for version detection
+          fetch-depth: 0
 
       - name: Get latest tag
         id: get_tag
         run: |
-          # Get the latest tag, or use 0.0.0 if none exists
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Latest tag: $LATEST_TAG"
 
       - name: Determine version bump
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_BUMP: ${{ github.event.inputs.bump }}
+          LATEST_TAG: ${{ steps.get_tag.outputs.latest_tag }}
         run: |
-          LATEST_TAG="${{ steps.get_tag.outputs.LATEST_TAG }}"
-          VERSION=${LATEST_TAG#v}  # Remove 'v' prefix
-          
-          # Parse version parts
+          VERSION=${LATEST_TAG#v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          
-          # Determine bump type from commit messages or manual input
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            BUMP_TYPE="${{ github.event.inputs.bump }}"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            BUMP_TYPE="$MANUAL_BUMP"
           else
-            # Check commit messages since last tag
-            COMMITS=$(git log $LATEST_TAG..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
-            
+            COMMITS=$(git log "$LATEST_TAG"..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
             if echo "$COMMITS" | grep -qiE "^(breaking|major):"; then
               BUMP_TYPE="major"
             elif echo "$COMMITS" | grep -qiE "^(feat|feature|minor):"; then
@@ -65,60 +62,53 @@ jobs:
               BUMP_TYPE="patch"
             fi
           fi
-          
-          echo "Bump type: $BUMP_TYPE"
-          
-          # Increment version
-          case $BUMP_TYPE in
-            major)
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              ;;
-            minor)
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              ;;
-            patch)
-              PATCH=$((PATCH + 1))
-              ;;
+
+          case "$BUMP_TYPE" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH+1)) ;;
           esac
-          
+
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "BUMP_TYPE=$BUMP_TYPE" >> $GITHUB_OUTPUT
-          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
+          echo "New version: $NEW_VERSION (bump: $BUMP_TYPE)"
 
       - name: Check if release needed
         id: check_release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LATEST_TAG: ${{ steps.get_tag.outputs.latest_tag }}
         run: |
-          # Check if there are changes since last tag
-          LATEST_TAG="${{ steps.get_tag.outputs.LATEST_TAG }}"
-          
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "Manual release triggered"
-          elif [ "$LATEST_TAG" == "v0.0.0" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "First release"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGES=$(git log "$LATEST_TAG"..HEAD --oneline 2>/dev/null | wc -l)
+          if [ "$CHANGES" -gt 0 ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
           else
-            CHANGES=$(git log $LATEST_TAG..HEAD --oneline 2>/dev/null | wc -l)
-            if [ "$CHANGES" -gt 0 ]; then
-              echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "Found $CHANGES commit(s) since last tag"
-            else
-              echo "should_release=false" >> $GITHUB_OUTPUT
-              echo "No changes since last tag"
-            fi
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create and push tag
         if: steps.check_release.outputs.should_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
-          NEW_VERSION="${{ steps.version.outputs.NEW_VERSION }}"
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+          # ensure remote uses token
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
           git push origin "v$NEW_VERSION"
 
   build:
@@ -157,7 +147,7 @@ jobs:
         env:
           BUILD_NUMBER: ${{ needs.version-and-build.outputs.new_version }}
         run: |
-          chmod +x build-agent-${{ matrix.platform }}.sh
+          chmod +x "build-agent-${{ matrix.platform }}.sh"
           ./build-agent-${{ matrix.platform }}.sh
 
       - name: Build Installer
@@ -166,7 +156,7 @@ jobs:
         env:
           BUILD_NUMBER: ${{ needs.version-and-build.outputs.new_version }}
         run: |
-          chmod +x build-agent-installer-${{ matrix.platform }}.sh
+          chmod +x "build-agent-installer-${{ matrix.platform }}.sh"
           ./build-agent-installer-${{ matrix.platform }}.sh
 
       - name: Upload Agent artifact
@@ -188,7 +178,7 @@ jobs:
     needs: [version-and-build, build]
     runs-on: ubuntu-latest
     if: needs.version-and-build.outputs.should_release == 'true'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -202,61 +192,52 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        env:
+          VERSION: ${{ needs.version-and-build.outputs.new_version }}
         run: |
-          VERSION="${{ needs.version-and-build.outputs.new_version }}"
-          
-          # Get previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 v$VERSION^ 2>/dev/null || echo "")
-          
-          echo "## Changes" > changelog.md
-          echo "" >> changelog.md
-          
-          if [ -z "$PREV_TAG" ]; then
-            echo "Initial release" >> changelog.md
-          else
-            # Group commits by type
-            echo "### Features" >> changelog.md
-            git log $PREV_TAG..v$VERSION --pretty=format:"- %s (%h)" --grep="^feat:" --grep="^feature:" >> changelog.md || echo "- None" >> changelog.md
-            echo "" >> changelog.md
-            
-            echo "### Bug Fixes" >> changelog.md
-            git log $PREV_TAG..v$VERSION --pretty=format:"- %s (%h)" --grep="^fix:" --grep="^bugfix:" >> changelog.md || echo "- None" >> changelog.md
-            echo "" >> changelog.md
-            
-            echo "### Other Changes" >> changelog.md
-            git log $PREV_TAG..v$VERSION --pretty=format:"- %s (%h)" --invert-grep --grep="^feat:" --grep="^feature:" --grep="^fix:" --grep="^bugfix:" >> changelog.md || echo "- None" >> changelog.md
-          fi
-          
-          cat changelog.md
+          PREV_TAG=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || echo "")
+          {
+            echo "## Kraken Agent Installer v${VERSION}"
+            echo
+            echo "### Downloads"
+            echo "Choose the package for your platform:"
+            echo "- **Linux x64**: \`Kraken.Agent.Installer-linux-x64.zip\`"
+            echo "- **Linux ARM64**: \`Kraken.Agent.Installer-linux-arm64.zip\`"
+            echo "- **Windows x64**: \`Kraken.Agent.Installer-win-x64.zip\`"
+            echo
+            echo "### Installation"
+            echo "1. Download the appropriate package for your platform"
+            echo "2. Extract the ZIP file"
+            echo "3. Run the installer executable"
+            echo
+            echo "## Changes"
+            echo
+            if [ -z "$PREV_TAG" ]; then
+              echo "Initial release"
+            else
+              echo "### Features"
+              git log "$PREV_TAG"..v"$VERSION" --pretty=format:"- %s (%h)" --grep="^feat:" --grep="^feature:" || echo "- None"
+              echo
+              echo "### Bug Fixes"
+              git log "$PREV_TAG"..v"$VERSION" --pretty=format:"- %s (%h)" --grep="^fix:" --grep="^bugfix:" || echo "- None"
+              echo
+              echo "### Other Changes"
+              git log "$PREV_TAG"..v"$VERSION" --pretty=format:"- %s (%h)" --invert-grep --grep="^feat:" --grep="^feature:" --grep="^fix:" --grep="^bugfix:" || echo "- None"
+              echo
+              echo "---"
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${VERSION}"
+            fi
+          } > changelog.md
+          echo "wrote changelog.md"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version-and-build.outputs.new_version }}
           name: Release v${{ needs.version-and-build.outputs.new_version }}
-          body: |
-            ## Kraken Agent Installer v${{ needs.version-and-build.outputs.new_version }}
-            
-            ### Downloads
-            Choose the package for your platform:
-            - **Linux x64**: `Kraken.Agent.Installer-linux-x64.zip`
-            - **Linux ARM64**: `Kraken.Agent.Installer-linux-arm64.zip`
-            - **Windows x64**: `Kraken.Agent.Installer-win-x64.zip`
-            - **macOS x64**: `Kraken.Agent.Installer-osx-x64.zip`
-            
-            ### Installation
-            1. Download the appropriate package for your platform
-            2. Extract the ZIP file
-            3. Run the installer executable
-            
-            $(cat changelog.md)
-            
-            ---
-            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.get_prev_tag.outputs.prev_tag }}...v${{ needs.version-and-build.outputs.new_version }}
-          files: |
-            artifacts/**/*.zip
+          body_path: changelog.md
+          files: artifacts/**/*.zip
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
