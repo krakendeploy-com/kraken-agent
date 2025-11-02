@@ -1,121 +1,55 @@
-name: Auto Version and Release
+# .github/workflows/release-agent-like-models.yml
+name: Tag & release Kraken.Agent on master merge
 
 on:
   push:
-    branches:
-      - master  # change if your default branch is 'main'
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Version bump type'
-        required: true
-        type: choice
-        options: [patch, minor, major]
-        default: 'patch'
+    branches: [ master ]
+    # Limit to agent-related changes if you like
+    paths:
+      - 'src/Kraken.Agent/**'
+      - 'src/Kraken.Installer/**'
 
 permissions:
   contents: write
-  packages: read
+  packages: write
 
 env:
   DOTNET_VERSION: '9.0.x'
 
 jobs:
-  version-and-build:
-    name: Auto Version, Build & Release
+  version:
+    name: Determine next version & create local tag
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ steps.version.outputs.new_version }}
-      should_release: ${{ steps.check_release.outputs.should_release }}
-
+      tag: ${{ steps.ver.outputs.next }}
+      version: ${{ steps.ver.outputs.next_no_v }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get latest tag
-        id: get_tag
+      - name: Determine next version (patch bump)
+        id: ver
+        shell: bash
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
-          echo "Latest tag: $LATEST_TAG"
+          latest=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then next="v1.0.0"; else
+            IFS='.' read -r major minor patch <<<"${latest#v}"
+            next="v${major}.${minor}.$((patch+1))"
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "next_no_v=${next#v}" >> "$GITHUB_OUTPUT"
+          echo "Next version: $next"
 
-      - name: Determine version bump
-        id: version
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MANUAL_BUMP: ${{ github.event.inputs.bump }}
-          LATEST_TAG: ${{ steps.get_tag.outputs.latest_tag }}
+      - name: Create local tag
         run: |
-          VERSION=${LATEST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            BUMP_TYPE="$MANUAL_BUMP"
-          else
-            COMMITS=$(git log "$LATEST_TAG"..HEAD --pretty=format:"%s" 2>/dev/null || git log --pretty=format:"%s")
-            if echo "$COMMITS" | grep -qiE "^(breaking|major):"; then
-              BUMP_TYPE="major"
-            elif echo "$COMMITS" | grep -qiE "^(feat|feature|minor):"; then
-              BUMP_TYPE="minor"
-            else
-              BUMP_TYPE="patch"
-            fi
-          fi
-
-          case "$BUMP_TYPE" in
-            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
-            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
-            patch) PATCH=$((PATCH+1)) ;;
-          esac
-
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "bump_type=$BUMP_TYPE" >> "$GITHUB_OUTPUT"
-          echo "New version: $NEW_VERSION (bump: $BUMP_TYPE)"
-
-      - name: Check if release needed
-        id: check_release
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          LATEST_TAG: ${{ steps.get_tag.outputs.latest_tag }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$LATEST_TAG" = "v0.0.0" ]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          CHANGES=$(git log "$LATEST_TAG"..HEAD --oneline 2>/dev/null | wc -l)
-          if [ "$CHANGES" -gt 0 ]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create and push tag
-        if: steps.check_release.outputs.should_release == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEW_VERSION: ${{ steps.version.outputs.new_version }}
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
-          # ensure remote uses token
-          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
-          git push origin "v$NEW_VERSION"
+          git tag -a "${{ steps.ver.outputs.next }}" -m "Release ${{ steps.ver.outputs.next }}"
 
   build:
     name: Build for ${{ matrix.platform }}
-    needs: version-and-build
-    if: needs.version-and-build.outputs.should_release == 'true'
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -124,24 +58,32 @@ jobs:
             platform: linux-x64
             agent_artifact_name: Kraken.Agent-linux-x64.zip
             installer_artifact_name: Kraken.Agent.Installer-linux-x64.zip
-          - os: windows-latest
-            platform: win-x64
-            agent_artifact_name: Kraken.Agent-win-x64.zip
-            installer_artifact_name: Kraken.Agent.Installer-win-x64.zip
           - os: ubuntu-latest
             platform: linux-arm64
             agent_artifact_name: Kraken.Agent-linux-arm64.zip
             installer_artifact_name: Kraken.Agent.Installer-linux-arm64.zip
+          - os: windows-latest
+            platform: win-x64
+            agent_artifact_name: Kraken.Agent-win-x64.zip
+            installer_artifact_name: Kraken.Agent.Installer-win-x64.zip
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # (Re)create the local tag so this job also sees it
+      - name: Restore local tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.version.outputs.tag }}" -m "Release ${{ needs.version.outputs.tag }}" || true
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-          source-url: https://nuget.pkg.github.com/krakendeploy-com/index.json
+          source-url: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -149,7 +91,7 @@ jobs:
         shell: bash
         working-directory: ./scripts
         env:
-          BUILD_NUMBER: ${{ needs.version-and-build.outputs.new_version }}
+          BUILD_NUMBER: ${{ needs.version.outputs.version }}   # 1.2.3 (no 'v')
         run: |
           chmod +x "build-agent-${{ matrix.platform }}.sh"
           ./build-agent-${{ matrix.platform }}.sh
@@ -158,7 +100,7 @@ jobs:
         shell: bash
         working-directory: ./scripts
         env:
-          BUILD_NUMBER: ${{ needs.version-and-build.outputs.new_version }}
+          BUILD_NUMBER: ${{ needs.version.outputs.version }}
         run: |
           chmod +x "build-agent-installer-${{ matrix.platform }}.sh"
           ./build-agent-installer-${{ matrix.platform }}.sh
@@ -178,16 +120,26 @@ jobs:
           retention-days: 90
 
   release:
-    name: Create GitHub Release
-    needs: [version-and-build, build]
+    name: Create GitHub Release (and push tag)
+    needs: [version, build]
     runs-on: ubuntu-latest
-    if: needs.version-and-build.outputs.should_release == 'true'
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Recreate tag in this job and push it only now (after build succeeded)
+      - name: Push tag to origin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # re-tag locally (no-op if identical)
+          git tag -a "${{ needs.version.outputs.tag }}" -m "Release ${{ needs.version.outputs.tag }}" || true
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git"
+          git push origin "${{ needs.version.outputs.tag }}"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -197,14 +149,13 @@ jobs:
       - name: Generate changelog
         id: changelog
         env:
-          VERSION: ${{ needs.version-and-build.outputs.new_version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || echo "")
           {
             echo "## Kraken Agent Installer v${VERSION}"
             echo
             echo "### Downloads"
-            echo "Choose the package for your platform:"
             echo "- **Linux x64**: \`Kraken.Agent.Installer-linux-x64.zip\`"
             echo "- **Linux ARM64**: \`Kraken.Agent.Installer-linux-arm64.zip\`"
             echo "- **Windows x64**: \`Kraken.Agent.Installer-win-x64.zip\`"
@@ -232,13 +183,12 @@ jobs:
               echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${VERSION}"
             fi
           } > changelog.md
-          echo "wrote changelog.md"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.version-and-build.outputs.new_version }}
-          name: Release v${{ needs.version-and-build.outputs.new_version }}
+          tag_name: ${{ needs.version.outputs.tag }}       # vX.Y.Z
+          name: Release ${{ needs.version.outputs.tag }}
           body_path: changelog.md
           files: artifacts/**/*.zip
           draft: false
