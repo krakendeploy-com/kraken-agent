@@ -8,12 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="kraken.models" Version="0.1.2" />
         <PackageReference Include="System.Diagnostics.EventLog" Version="9.0.5"/>
         <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="4.5.0"/>
     </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\..\..\kraken-models\src\Kraken.Models\Kraken.Models.csproj" />        
-    </ItemGroup>
-
 </Project>
