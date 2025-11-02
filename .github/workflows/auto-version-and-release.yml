@@ -1,3 +1,4 @@
+# .github/workflows/release-agent.yml
 name: Tag & release Kraken.Agent on master merge
 
 on:
@@ -6,6 +7,7 @@ on:
     paths:
       - 'src/Kraken.Agent/**'
       - 'src/Kraken.Agent.Installer/**'
+      - '.github/workflows/release-agent.yml'
   workflow_dispatch: {}
 
 permissions:
@@ -70,7 +72,7 @@ jobs:
             installer_artifact_name: Kraken.Agent.Installer-win-x64.zip
 
     env:
-      BUILD_NUMBER: ${{ needs.version.outputs.version }} # 1.2.3 (no 'v')
+      BUILD_NUMBER: ${{ needs.version.outputs.version }} # 1.2.3
 
     steps:
       - name: Checkout code
@@ -78,7 +80,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Recreate the local tag in this job so dotnet can see it (if you use MinVer)
       - name: Restore local tag
         run: |
           git config user.name  "github-actions[bot]"
@@ -90,14 +91,22 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Authenticate to GitHub Packages (NuGet)
+      # --- Auth to GitHub Packages (Linux/macOS) ---
+      - name: Authenticate to GitHub Packages (NuGet) [Unix]
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           dotnet nuget remove source github || true
-          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
-            --name "github" \
-            --username "${{ github.actor }}" \
-            --password "${{ secrets.GITHUB_TOKEN }}" \
-            --store-password-in-clear-text
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --name "github" --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}" --store-password-in-clear-text
+          dotnet nuget list source
+
+      # --- Auth to GitHub Packages (Windows/PowerShell) ---
+      - name: Authenticate to GitHub Packages (NuGet) [Windows]
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet nuget remove source github 2>$null
+          dotnet nuget add source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --name "github" --username "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}" --store-password-in-clear-text
           dotnet nuget list source
 
       # -------- Publish Agent --------
@@ -106,12 +115,8 @@ jobs:
           echo "Building Kraken.Agent for ${{ matrix.platform }} - Version $BUILD_NUMBER"
           OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent"
           mkdir -p "$OUT_DIR"
-          dotnet publish "${{ env.AGENT_CSPROJ }}" \
-            -c Release -r ${{ matrix.platform }} \
-            -p:Version=$BUILD_NUMBER \
-            -o "$OUT_DIR"
+          dotnet publish "${{ env.AGENT_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$BUILD_NUMBER -o "$OUT_DIR"
           echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
-          echo "Agent out: $OUT_DIR"
 
       # -------- Publish Installer --------
       - name: Publish Installer
@@ -119,12 +124,8 @@ jobs:
           echo "Building Kraken.Agent.Installer for ${{ matrix.platform }} - Version $BUILD_NUMBER"
           OUT_DIR="$RUNNER_TEMP/out/${{ matrix.platform }}/Kraken.Agent.Installer"
           mkdir -p "$OUT_DIR"
-          dotnet publish "${{ env.INSTALLER_CSPROJ }}" \
-            -c Release -r ${{ matrix.platform }} \
-            -p:Version=$BUILD_NUMBER \
-            -o "$OUT_DIR"
+          dotnet publish "${{ env.INSTALLER_CSPROJ }}" -c Release -r ${{ matrix.platform }} -p:Version=$BUILD_NUMBER -o "$OUT_DIR"
           echo "$BUILD_NUMBER" > "$OUT_DIR/version.txt"
-          echo "Installer out: $OUT_DIR"
 
       # -------- Zip (Unix) --------
       - name: Zip artifacts (Unix)
@@ -173,7 +174,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Push the tag only after successful builds
       - name: Push tag to origin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -231,7 +231,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version.outputs.tag }}     # vX.Y.Z
+          tag_name: ${{ needs.version.outputs.tag }}
           name: Release ${{ needs.version.outputs.tag }}
           body_path: changelog.md
           files: artifacts/**/*.zip
