@@ -11,7 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Kraken.Models" Version="0.1.4" />
+        <PackageReference Include="Kraken.Models" Version="0.1.4"/>
         <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.5"/>
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.5"/>
         <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.5"/>
@@ -27,10 +27,10 @@
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Update="agentsettings.Test.json">
-          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Update="agentsettings.Staging.json">
-          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
     </ItemGroup>
 </Project>

@@ -83,7 +83,6 @@ public static class ScriptExecutor
 
         // Add step parameter variables
         foreach (var stepParam in stepTask.StepParameters)
-        {
             if (stepParam.ControlType == "SelectArtifact" && stepParam.ArtifactMetadata != null)
             {
                 // Add artifact-specific variables
@@ -97,7 +96,6 @@ public static class ScriptExecutor
                 // Add regular step parameter
                 psi.Environment[$"Kraken.Step.{stepParam.Name}"] = stepParam.Value;
             }
-        }
 
         // Note: Properties dictionary has been removed from StepTemplateVersion
         // ScriptBody and Syntax are now dedicated properties on the version

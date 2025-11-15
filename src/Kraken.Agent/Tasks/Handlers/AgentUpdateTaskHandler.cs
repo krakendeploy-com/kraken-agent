@@ -23,7 +23,8 @@ public class AgentUpdateTaskHandler : IAgentCommandTask<AgentUpdateTask>
         Console.WriteLine("🔄 Starting agent update process...");
 
         var platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "win-x64" : "linux-x64";
-        var updateUrl = $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent.Installer-{platform}.zip";
+        var updateUrl =
+            $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent.Installer-{platform}.zip";
 
         using var client = new HttpClient();
         var data = await client.GetByteArrayAsync(updateUrl);

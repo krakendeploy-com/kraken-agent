@@ -102,7 +102,6 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
 
             // STEP 1: Download artifacts and add step parameter variables
             foreach (var stepParam in stepTask.StepParameters)
-            {
                 if (stepParam.ControlType == "SelectArtifact" && stepParam.ArtifactMetadata != null)
                 {
                     var artifact = stepParam.ArtifactMetadata;
@@ -161,7 +160,6 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
                     allVariables[$"Kraken.Step.{stepParam.Name}"] =
                         new VariableValueModel(stepParam.Value, VariableValueType.Text);
                 }
-            }
 
             // STEP 2: Prepare and run script
             await AddLogAsync("Preparing script for execution...", LogLevel.INFO);
