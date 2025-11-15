@@ -133,8 +133,8 @@ internal class Program
                 agentId,
                 workspace,
                 configPath,
-                "http://api.krakendeploy.com",
-                agent.AuthUrl ?? "http://auth.krakendeploy.com");
+                "https://agent-api.krakendeploy.com",
+                agent.AuthUrl ?? "https://auth.krakendeploy.com");
 
             Console.WriteLine("🚀 Starting agent...");
             var started = TryStartAgent(agentExe, installPath, serviceName, platform);
@@ -322,7 +322,7 @@ internal class Program
     {
         using var client = new HttpClient();
         var response = await client.PostAsJsonAsync(
-            $"http://localhost:5000/organization/{orgId}/workspaces/{workspaceId}/agents", input);
+            $"https://agent-api.krakendeploy.com/organization/{orgId}/workspaces/{workspaceId}/agents", input);
         return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<RegisterAgentApiResponse>() : null;
     }
 
