@@ -14,16 +14,16 @@ internal class Program
     private static async Task<int> Main(string[] args)
     {
         var platform = GetPlatform();
-        
+
         // Check for elevated privileges on Linux
         if (!IsWindows(platform) && !IsRunningAsRoot())
         {
             Console.WriteLine("❌ This installer must be run with root privileges on Linux.");
             Console.WriteLine("   Please run with sudo:");
-            Console.WriteLine($"   sudo {System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName ?? "./installer"}");
+            Console.WriteLine($"   sudo {Process.GetCurrentProcess().MainModule?.FileName ?? "./installer"}");
             return 1;
         }
-        
+
         var (orgId, workspaceId, agentIdFromArgs, tags, environments) = ParseArguments(args);
         var logFilePath = Path.Combine(AppContext.BaseDirectory, "kraken-install.log");
         var logWriter = new StreamWriter(logFilePath, true) { AutoFlush = true };
@@ -33,7 +33,8 @@ internal class Program
 
         var tmpFolder = CreateTemporaryFolder();
         var zipPath = Path.Combine(tmpFolder, "agent.zip");
-        var sourceZipUrl = $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent-{platform}.zip";
+        var sourceZipUrl =
+            $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent-{platform}.zip";
 
         try
         {
@@ -166,7 +167,7 @@ internal class Program
     {
         return platform == "win-x64";
     }
-    
+
     private static bool IsRunningAsRoot()
     {
         try
@@ -323,7 +324,9 @@ internal class Program
         using var client = new HttpClient();
         var response = await client.PostAsJsonAsync(
             $"https://agent-api.krakendeploy.com/organization/{orgId}/workspaces/{workspaceId}/agents", input);
-        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<RegisterAgentApiResponse>() : null;
+        return response.IsSuccessStatusCode
+            ? await response.Content.ReadFromJsonAsync<RegisterAgentApiResponse>()
+            : null;
     }
 
     private static bool IsServiceInstalled(string serviceName, string platform)
