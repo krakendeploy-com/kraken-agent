@@ -11,10 +11,6 @@ namespace Kraken.Agent.Installer;
 
 internal class Program
 {
-    private static string _debugOrgId = "748e7253-2735-4c18-8944-edcf827e16a8";
-    private static string _debugWorkspaceId = "6ad7c116-08a0-4f5d-8d59-af2ffc9eb440";
-    private static string _debugZipPath = "C:\\Users\\Sebastian\\Documents\\Work\\Kraken\\kraken-agent\\scripts\\build\\win-x64\\agent.zip";
-    private static bool _isDebug = false;
     private static async Task<int> Main(string[] args)
     {
         var platform = GetPlatform();
@@ -199,9 +195,6 @@ internal class Program
     private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments)
         ParseArguments(string[] args)
     {
-        if(_isDebug)
-            return ParseArgumentsTest();
-        
         string? orgId = null;
         string? workspaceId = null;
         string? agentId = null;
@@ -265,52 +258,6 @@ internal class Program
         return (orgId, workspaceId!, agentId, tags, environments);
     }
 
-    private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments)
-        ParseArgumentsTest()
-    {
-        var orgId = _debugOrgId;
-        var workspaceId = _debugWorkspaceId;
-        string? agentId = null;
-        var tagsArg = "kraken-api,kraken-auth";
-        string? environmentArg = null;
-        
-        var hasOrgAndWorkspace = !string.IsNullOrWhiteSpace(orgId) && !string.IsNullOrWhiteSpace(workspaceId);
-        var hasAgentAndWorkspace = !string.IsNullOrWhiteSpace(agentId) && !string.IsNullOrWhiteSpace(workspaceId);
-
-        if (!hasOrgAndWorkspace && !hasAgentAndWorkspace)
-        {
-            Console.WriteLine("❌ You must provide either:");
-            Console.WriteLine("   --orgId <id> AND --workspaceId <id>");
-            Console.WriteLine("   OR");
-            Console.WriteLine("   --agentId <id> AND --workspaceId <id>");
-            Environment.Exit(1);
-        }
-
-        // Parse tags from comma-separated string
-        var tags = new List<string>();
-        if (!string.IsNullOrWhiteSpace(tagsArg))
-            tags = tagsArg.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(t => t.Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .ToList();
-
-        // Parse environments from comma-separated string to GUIDs
-        var environments = new List<Guid>();
-        if (!string.IsNullOrWhiteSpace(environmentArg))
-        {
-            environments = environmentArg.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(e => e.Trim())
-                .Where(e => !string.IsNullOrWhiteSpace(e) && Guid.TryParse(e, out _))
-                .Select(e => Guid.Parse(e))
-                .ToList();
-
-            if (environments.Count == 0)
-                Console.WriteLine("⚠️ Warning: No valid environment GUIDs found in provided environment parameter");
-        }
-
-        return (orgId, workspaceId!, agentId, tags, environments);
-    }
-
     private static string CreateTemporaryFolder()
     {
         var tmp = Path.Combine(Path.GetTempPath(), $"kraken-{Guid.NewGuid()}");
@@ -320,19 +267,6 @@ internal class Program
 
     private static async Task DownloadAgentZip(string url, string destination)
     {
-        if (_isDebug)
-        {
-            Console.WriteLine($"🧪 Debug mode: copying zip from '{_debugZipPath}'");
-            var destDir = Path.GetDirectoryName(destination);
-            if (!File.Exists(_debugZipPath))
-                throw new FileNotFoundException("Debug agent.zip not found.", _debugZipPath);
-
-            if (!string.IsNullOrWhiteSpace(destDir))
-                Directory.CreateDirectory(destDir);
-
-            File.Copy(_debugZipPath, destination, overwrite: true);
-            return; 
-        }
         using var client = new HttpClient();
         var zipBytes = await client.GetByteArrayAsync(url);
         await File.WriteAllBytesAsync(destination, zipBytes);
