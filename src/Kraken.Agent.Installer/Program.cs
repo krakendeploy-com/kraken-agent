@@ -308,7 +308,7 @@ internal class Program
     ""WorkspaceId"": ""{workspaceId}"",
     ""OrganizationId"": ""{organizationId}""
   }},
-  ""Server"": {{
+  ""AgentApi"": {{
     ""Url"": ""{serverUrl}""
   }},
   ""Auth"": {{
