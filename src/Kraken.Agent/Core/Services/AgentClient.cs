@@ -207,7 +207,7 @@ public class AgentClient
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Unexpected error in GetNextTaskAsync: {ex.Message}");
+            Console.WriteLine($"❌ Unexpected error in GetNextTaskAsync: {ex.Message}, Stacktrace: {ex.StackTrace}");
             _status = AgentStatus.Offline;
             return null;
         }
