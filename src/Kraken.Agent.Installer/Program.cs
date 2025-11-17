@@ -478,9 +478,9 @@ WantedBy=multi-user.target";
             RunShell("groupadd kraken || true");    
         }
 
-        // Set ownership of the installation directory
-        var baseDir = "/opt/kraken/agents";
-        RunShell($"chown -R kraken:kraken {baseDir}");
+        // Set ownership of the installation directory and keys directory
+        RunShell("chown -R kraken:kraken /opt/kraken/agents");
+        RunShell("chown -R kraken:kraken /var/lib/kraken");
     }
 }
 
