@@ -115,7 +115,10 @@ internal class Program
             CopyFiles(agentTempFolder, installPath, true);
 
             if (!IsWindows(platform))
-                RunShell($"chmod +x \"{agentExe}\"");
+            {
+                EnsureKrakenUserExists();
+                RunShell($"chmod +x {agentExe}");
+            }
 
             Console.WriteLine("📝 Writing config & securing refresh token...");
 
@@ -393,8 +396,10 @@ After=network.target
 Type=simple
 ExecStart={agentExe}
 WorkingDirectory={installPath}
-Restart=on-failure
-User=root
+Restart=always
+RestartSec=3
+User=kraken
+Group=kraken
 
 [Install]
 WantedBy=multi-user.target";
@@ -459,6 +464,23 @@ WantedBy=multi-user.target";
         catch
         {
         }
+    }
+
+    private static void EnsureKrakenUserExists()
+    {
+        // Check if the kraken user exists
+        var userExists = RunShell("id -u kraken").Trim();
+        if (userExists != "kraken")
+        {
+            Console.WriteLine("👤 Creating kraken user...");
+            // Create the kraken user and group
+            RunShell("useradd -r -s /usr/sbin/nologin kraken || true");
+            RunShell("groupadd kraken || true");    
+        }
+
+        // Set ownership of the installation directory
+        var baseDir = "/opt/kraken/agents";
+        RunShell($"chown -R kraken:kraken {baseDir}");
     }
 }
 
