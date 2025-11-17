@@ -114,12 +114,6 @@ internal class Program
             Console.WriteLine("📁 Installing to: " + installPath);
             CopyFiles(agentTempFolder, installPath, true);
 
-            if (!IsWindows(platform))
-            {
-                EnsureKrakenUserExists();
-                RunShell($"chmod +x {agentExe}");
-            }
-
             Console.WriteLine("📝 Writing config & securing refresh token...");
 
             // Tokens come from Kraken.Api (which got them from Auth)
@@ -139,6 +133,12 @@ internal class Program
                 configPath,
                 "https://agent-api.krakendeploy.com",
                 agent.AuthUrl ?? "https://auth.krakendeploy.com");
+            
+            if (!IsWindows(platform))
+            {
+                EnsureKrakenUserExists();
+                RunShell($"chmod +x {agentExe}");
+            }
 
             Console.WriteLine("🚀 Starting agent...");
             var started = TryStartAgent(agentExe, installPath, serviceName, platform);
