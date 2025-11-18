@@ -172,19 +172,19 @@ public class AgentClient
 
             if (!response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == HttpStatusCode.NoContent)
-                {
-                    // No tasks available, keep current status
-                    PollingInterval = TimeSpan.FromSeconds(DefaultPollingIntervalSeconds);
-                    return null;
-                }
-
                 if (response.StatusCode == HttpStatusCode.Conflict)
                     // Conflict status, keep current status
                     return null;
 
                 Console.WriteLine($"⚠️ Task request failed. Status: {response.StatusCode}");
                 _status = AgentStatus.Offline;
+                return null;
+            }
+            
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                // No tasks available, keep current status
+                PollingInterval = TimeSpan.FromSeconds(DefaultPollingIntervalSeconds);
                 return null;
             }
 
@@ -207,7 +207,7 @@ public class AgentClient
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Unexpected error in GetNextTaskAsync: {ex.Message}");
+            Console.WriteLine($"❌ Unexpected error in GetNextTaskAsync: {ex.Message}, Stacktrace: {ex.StackTrace}");
             _status = AgentStatus.Offline;
             return null;
         }

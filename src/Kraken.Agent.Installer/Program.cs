@@ -114,9 +114,6 @@ internal class Program
             Console.WriteLine("📁 Installing to: " + installPath);
             CopyFiles(agentTempFolder, installPath, true);
 
-            if (!IsWindows(platform))
-                RunShell($"chmod +x \"{agentExe}\"");
-
             Console.WriteLine("📝 Writing config & securing refresh token...");
 
             // Tokens come from Kraken.Api (which got them from Auth)
@@ -136,6 +133,12 @@ internal class Program
                 configPath,
                 "https://agent-api.krakendeploy.com",
                 agent.AuthUrl ?? "https://auth.krakendeploy.com");
+            
+            if (!IsWindows(platform))
+            {
+                EnsureKrakenUserExists();
+                RunShell($"chmod +x {agentExe}");
+            }
 
             Console.WriteLine("🚀 Starting agent...");
             var started = TryStartAgent(agentExe, installPath, serviceName, platform);
@@ -312,7 +315,7 @@ internal class Program
     ""WorkspaceId"": ""{workspaceId}"",
     ""OrganizationId"": ""{organizationId}""
   }},
-  ""Server"": {{
+  ""AgentApi"": {{
     ""Url"": ""{serverUrl}""
   }},
   ""Auth"": {{
@@ -401,8 +404,10 @@ After=network.target
 Type=simple
 ExecStart={agentExe}
 WorkingDirectory={installPath}
-Restart=on-failure
-User=root
+Restart=always
+RestartSec=3
+User=kraken
+Group=kraken
 
 [Install]
 WantedBy=multi-user.target";
@@ -467,6 +472,23 @@ WantedBy=multi-user.target";
         catch
         {
         }
+    }
+
+    private static void EnsureKrakenUserExists()
+    {
+        // Check if the kraken user exists
+        var userExists = RunShell("id -u kraken").Trim();
+        if (userExists != "kraken")
+        {
+            Console.WriteLine("👤 Creating kraken user...");
+            // Create the kraken user and group
+            RunShell("useradd -r -s /usr/sbin/nologin kraken || true");
+            RunShell("groupadd kraken || true");    
+        }
+
+        // Set ownership of the installation directory and keys directory
+        RunShell("chown -R kraken:kraken /opt/kraken/agents");
+        RunShell("chown -R kraken:kraken /var/lib/kraken");
     }
 }
 
