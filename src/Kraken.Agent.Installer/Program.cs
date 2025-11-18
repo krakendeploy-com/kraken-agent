@@ -24,7 +24,7 @@ internal class Program
             return 1;
         }
 
-        var (orgId, workspaceId, agentIdFromArgs, tags, environments) = ParseArguments(args);
+        var (orgId, workspaceId, agentIdFromArgs, tags, environments, apiKey) = ParseArguments(args);
         var logFilePath = Path.Combine(AppContext.BaseDirectory, "kraken-install.log");
         var logWriter = new StreamWriter(logFilePath, true) { AutoFlush = true };
         var dualWriter = new DualWriter(Console.Out, logWriter);
@@ -79,7 +79,7 @@ internal class Program
                 if (environments.Any())
                     Console.WriteLine($"  Environments: {string.Join(", ", environments.Select(e => e.ToString()))}");
 
-                agent = await RegisterAgentAsync(orgId!, workspaceId!, input);
+                agent = await RegisterAgentAsync(orgId!, workspaceId!, input, apiKey);
                 if (agent == null) return 1;
 
                 agentId = agent.AgentId.ToString();
@@ -193,7 +193,7 @@ internal class Program
         return Path.Combine(path, IsWindows(platform) ? "Kraken.Agent.exe" : "Kraken.Agent");
     }
 
-    private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments)
+    private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments, string? apiKey)
         ParseArguments(string[] args)
     {
         string? orgId = null;
@@ -201,6 +201,7 @@ internal class Program
         string? agentId = null;
         string? tagsArg = null;
         string? environmentArg = null;
+        string? apiKey = null;
 
         for (var i = 0; i < args.Length; i++)
             switch (args[i])
@@ -219,6 +220,9 @@ internal class Program
                     break;
                 case "--environment":
                     environmentArg = args.ElementAtOrDefault(i + 1);
+                    break;
+                case "--apiKey":
+                    apiKey = args.ElementAtOrDefault(i + 1);
                     break;
             }
 
@@ -256,7 +260,7 @@ internal class Program
                 Console.WriteLine("⚠️ Warning: No valid environment GUIDs found in provided environment parameter");
         }
 
-        return (orgId, workspaceId!, agentId, tags, environments);
+        return (orgId, workspaceId!, agentId, tags, environments, apiKey);
     }
 
     private static string CreateTemporaryFolder()
@@ -319,9 +323,13 @@ internal class Program
     }
 
     private static async Task<RegisterAgentApiResponse?> RegisterAgentAsync(string orgId, string workspaceId,
-        RegisterAgentApiRequest input)
+        RegisterAgentApiRequest input, string? apiKey)
     {
         using var client = new HttpClient();
+        if (!string.IsNullOrWhiteSpace(apiKey))
+        {
+            client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+        }
         var response = await client.PostAsJsonAsync(
             $"https://agent-api.krakendeploy.com/organization/{orgId}/workspaces/{workspaceId}/agents", input);
         return response.IsSuccessStatusCode
