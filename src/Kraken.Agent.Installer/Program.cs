@@ -133,7 +133,7 @@ internal class Program
                 configPath,
                 "https://agent-api.krakendeploy.com",
                 agent.AuthUrl ?? "https://auth.krakendeploy.com");
-            
+
             if (!IsWindows(platform))
             {
                 EnsureKrakenUserExists();
@@ -196,7 +196,8 @@ internal class Program
         return Path.Combine(path, IsWindows(platform) ? "Kraken.Agent.exe" : "Kraken.Agent");
     }
 
-    private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments, string? apiKey)
+    private static (string? orgId, string workspaceId, string? agentId, List<string> tags, List<Guid> environments,
+        string? apiKey)
         ParseArguments(string[] args)
     {
         string? orgId = null;
@@ -329,10 +330,7 @@ internal class Program
         RegisterAgentApiRequest input, string? apiKey)
     {
         using var client = new HttpClient();
-        if (!string.IsNullOrWhiteSpace(apiKey))
-        {
-            client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
-        }
+        if (!string.IsNullOrWhiteSpace(apiKey)) client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
         var response = await client.PostAsJsonAsync(
             $"https://agent-api.krakendeploy.com/organization/{orgId}/workspaces/{workspaceId}/agents", input);
         return response.IsSuccessStatusCode
@@ -483,7 +481,7 @@ WantedBy=multi-user.target";
             Console.WriteLine("👤 Creating kraken user...");
             // Create the kraken user and group
             RunShell("useradd -r -s /usr/sbin/nologin kraken || true");
-            RunShell("groupadd kraken || true");    
+            RunShell("groupadd kraken || true");
         }
 
         // Set ownership of the installation directory and keys directory

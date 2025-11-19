@@ -180,7 +180,7 @@ public class AgentClient
                 _status = AgentStatus.Offline;
                 return null;
             }
-            
+
             if (response.StatusCode == HttpStatusCode.NoContent)
             {
                 // No tasks available, keep current status
