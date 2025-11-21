@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Kraken.Models" Version="0.1.4"/>
+        <PackageReference Include="Kraken.Models" Version="0.1.7" />
         <PackageReference Include="System.Diagnostics.EventLog" Version="9.0.5"/>
         <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="4.5.0"/>
     </ItemGroup>
