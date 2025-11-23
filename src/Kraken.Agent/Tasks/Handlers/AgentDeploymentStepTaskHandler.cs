@@ -107,7 +107,7 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
                     var artifact = stepParam.ArtifactMetadata;
                     var artifactName = artifact.Name;
                     var artifactVersion = artifact.Version;
-                    var packageUrl = artifact.Url;
+                    var packageUrl = artifact.Url.Replace("{agentId}", _settings.Agent.Id.ToString());
 
                     var targetDirectory = Path.Combine(
                         platformHuman == "windows"
@@ -121,13 +121,7 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
                     // Ensure the directory exists
                     Directory.CreateDirectory(targetDirectory);
 
-                    using var httpClient = new HttpClient();
-                    using var response =
-                        await httpClient.GetAsync(packageUrl, HttpCompletionOption.ResponseHeadersRead);
-                    response.EnsureSuccessStatusCode();
-
-                    var fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
-                                   ?? Path.GetFileName(new Uri(packageUrl).AbsolutePath);
+                    var fileName = Path.GetFileName(new Uri(packageUrl).AbsolutePath);
                     var filePath = Path.Combine(targetDirectory, fileName);
 
                     if (File.Exists(filePath))
@@ -139,8 +133,10 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
                     {
                         await AddLogAsync($"Downloading artifact '{artifactName}' v{artifactVersion}...",
                             LogLevel.INFO);
-                        await using var fs = File.Create(filePath);
-                        await response.Content.CopyToAsync(fs);
+                        
+                        // Download artifact using the appropriate authentication method
+                        await DownloadArtifactAsync(artifact, packageUrl, filePath, platform, AddLogAsync);
+                        
                         await AddLogAsync($"Downloaded artifact '{artifactName}' to {filePath}", LogLevel.INFO);
                     }
 
@@ -286,6 +282,115 @@ exit 0
         var client = new HttpClient();
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", AgentState.Current.AccessToken);
+        return client;
+    }
+
+    /// <summary>
+    ///     Downloads an artifact using the appropriate authentication method based on the artifact metadata.
+    /// </summary>
+    private async Task DownloadArtifactAsync(
+        ArtifactMetadata artifact,
+        string packageUrl,
+        string filePath,
+        string platform,
+        Func<string, LogLevel, Task> logAsync)
+    {
+        using var httpClient = await CreateHttpClientForArtifact(artifact, platform, logAsync);
+        using var response = await httpClient.GetAsync(packageUrl, HttpCompletionOption.ResponseHeadersRead);
+        
+        response.EnsureSuccessStatusCode();
+        
+        // Update filename from response if available
+        var responseFileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"');
+        if (!string.IsNullOrWhiteSpace(responseFileName))
+        {
+            var directory = Path.GetDirectoryName(filePath);
+            filePath = Path.Combine(directory!, responseFileName);
+        }
+        
+        await using var fs = File.Create(filePath);
+        await response.Content.CopyToAsync(fs);
+    }
+
+    /// <summary>
+    ///     Creates an HttpClient configured with the appropriate authentication for the artifact source.
+    /// </summary>
+    private async Task<HttpClient> CreateHttpClientForArtifact(
+        ArtifactMetadata artifact,
+        string platform,
+        Func<string, LogLevel, Task> logAsync)
+    {
+        var authType = artifact.Authentication?.Type?.ToLowerInvariant() ?? "none";
+        
+        switch (authType)
+        {
+            case "internal":
+            case "jwt":
+                // Use agent's own JWT token for internal artifacts
+                await logAsync($"Using JWT authentication for artifact download", LogLevel.DEBUG);
+                return await CreateAuthedClientAsync(platform);
+            
+            case "basic":
+                // Basic authentication (username/password)
+                await logAsync($"Using Basic authentication for artifact download", LogLevel.DEBUG);
+                return CreateBasicAuthClient(artifact.Authentication!.Config);
+            
+            case "apikey":
+                // API key authentication
+                await logAsync($"Using API Key authentication for artifact download", LogLevel.DEBUG);
+                return CreateApiKeyAuthClient(artifact.Authentication!.Config);
+            
+            case "none":
+            default:
+                // No authentication
+                await logAsync($"Using no authentication for artifact download", LogLevel.DEBUG);
+                return new HttpClient();
+        }
+    }
+
+    /// <summary>
+    ///     Creates an HttpClient with Basic authentication.
+    /// </summary>
+    private HttpClient CreateBasicAuthClient(Dictionary<string, string>? config)
+    {
+        var client = new HttpClient();
+        
+        if (config != null && 
+            config.TryGetValue("Username", out var username) && 
+            config.TryGetValue("Password", out var password))
+        {
+            var credentials = Convert.ToBase64String(
+                System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
+            client.DefaultRequestHeaders.Authorization = 
+                new AuthenticationHeaderValue("Basic", credentials);
+        }
+        
+        return client;
+    }
+
+    /// <summary>
+    ///     Creates an HttpClient with API Key authentication.
+    /// </summary>
+    private HttpClient CreateApiKeyAuthClient(Dictionary<string, string>? config)
+    {
+        var client = new HttpClient();
+        
+        if (config != null)
+        {
+            // Support multiple API key header formats
+            if (config.TryGetValue("HeaderName", out var headerName) && 
+                config.TryGetValue("ApiKey", out var apiKey))
+            {
+                // Custom header name (e.g., "X-API-Key")
+                client.DefaultRequestHeaders.Add(headerName, apiKey);
+            }
+            else if (config.TryGetValue("ApiKey", out apiKey))
+            {
+                // Default to X-API-Key header
+                client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+            }
+        }
+        
         return client;
     }
 }
