@@ -11,6 +11,10 @@ namespace Kraken.Agent.Installer;
 
 internal class Program
 {
+    private const string GITHUB_RELEASE_URL_BASE = "https://github.com/krakendeploy-com/kraken-agent/releases/latest/download";
+    private const string KRAKEN_API_URL = "https://agent-api.krakendeploy.com";
+    private const string KRAKEN_AUTH_URL = "https://auth.krakendeploy.com";
+
     private static async Task<int> Main(string[] args)
     {
         var platform = GetPlatform();
@@ -25,6 +29,10 @@ internal class Program
         }
 
         var (orgId, workspaceId, agentIdFromArgs, tags, environments, apiKey) = ParseArguments(args);
+        
+        // Determine if this is an update (agentId provided) or fresh install (new registration)
+        var isUpdate = !string.IsNullOrWhiteSpace(agentIdFromArgs);
+        
         var logFilePath = Path.Combine(AppContext.BaseDirectory, "kraken-install.log");
         var logWriter = new StreamWriter(logFilePath, true) { AutoFlush = true };
         var dualWriter = new DualWriter(Console.Out, logWriter);
@@ -33,8 +41,7 @@ internal class Program
 
         var tmpFolder = CreateTemporaryFolder();
         var zipPath = Path.Combine(tmpFolder, "agent.zip");
-        var sourceZipUrl =
-            $"https://github.com/krakendeploy-com/kraken-agent/releases/latest/download/Kraken.Agent-{platform}.zip";
+        var sourceZipUrl = $"{GITHUB_RELEASE_URL_BASE}/Kraken.Agent-{platform}.zip";
 
         try
         {
@@ -51,7 +58,7 @@ internal class Program
             string agentId, workspace;
             RegisterAgentApiResponse? agent = null;
 
-            if (!string.IsNullOrWhiteSpace(agentIdFromArgs))
+            if (isUpdate)
             {
                 agentId = agentIdFromArgs!;
                 workspace = workspaceId!;
@@ -114,25 +121,52 @@ internal class Program
             Console.WriteLine("📁 Installing to: " + installPath);
             CopyFiles(agentTempFolder, installPath, true);
 
-            Console.WriteLine("📝 Writing config & securing refresh token...");
-
-            // Tokens come from Kraken.Api (which got them from Auth)
-            if (agent == null || string.IsNullOrWhiteSpace(agent.AuthAccessToken) ||
-                string.IsNullOrWhiteSpace(agent.AuthRefreshToken))
+            Console.WriteLine("📝 Writing config...");
+            
+            string configOrgId, configAgentApiUrl, configAuthUrl;
+            
+            if (isUpdate)
             {
-                Console.WriteLine("❌ Registration did not return tokens. Aborting.");
-                return 1;
+                Console.WriteLine("🔐 Using existing refresh token from secure storage...");
+                
+                // Load existing config to preserve settings
+                var existingConfig = await LoadExistingConfigAsync(rootPath);
+                if (existingConfig == null)
+                {
+                    Console.WriteLine("❌ Failed to load existing config. Cannot update.");
+                    return 1;
+                }
+                
+                configOrgId = existingConfig.Value.OrganizationId;
+                configAgentApiUrl = existingConfig.Value.AgentApiUrl;
+                configAuthUrl = existingConfig.Value.AuthUrl;
+                
+                Console.WriteLine($"📋 Loaded existing config: OrgId={configOrgId}, AgentApi={configAgentApiUrl}, Auth={configAuthUrl}");
+            }
+            else
+            {
+                if (agent == null || string.IsNullOrWhiteSpace(agent.AuthAccessToken) ||
+                    string.IsNullOrWhiteSpace(agent.AuthRefreshToken))
+                {
+                    Console.WriteLine("❌ Registration did not return tokens. Aborting.");
+                    return 1;
+                }
+
+                Console.WriteLine("🔐 Securing refresh token...");
+                SecureTokenStore.SaveRefreshToken(platform, rootPath, agent.AuthRefreshToken!);
+                
+                configOrgId = orgId!;
+                configAgentApiUrl = KRAKEN_API_URL;
+                configAuthUrl = agent.AuthUrl ?? KRAKEN_AUTH_URL;
             }
 
-            SecureTokenStore.SaveRefreshToken(platform, rootPath, agent.AuthRefreshToken!);
-
             await WriteConfigAsync(
-                orgId!,
+                configOrgId,
                 agentId,
                 workspace,
                 configPath,
-                "https://agent-api.krakendeploy.com",
-                agent.AuthUrl ?? "https://auth.krakendeploy.com");
+                configAgentApiUrl,
+                configAuthUrl);
 
             if (!IsWindows(platform))
             {
@@ -307,7 +341,7 @@ internal class Program
     private static async Task WriteConfigAsync(
         string organizationId, string agentId, string workspaceId,
         string configPath,
-        string serverUrl, string authUrl)
+        string agentApiUrl, string authUrl)
     {
         var json = $@"
 {{
@@ -317,7 +351,7 @@ internal class Program
     ""OrganizationId"": ""{organizationId}""
   }},
   ""AgentApi"": {{
-    ""Url"": ""{serverUrl}""
+    ""Url"": ""{agentApiUrl}""
   }},
   ""Auth"": {{
     ""Url"": ""{authUrl}""
@@ -326,13 +360,71 @@ internal class Program
         await File.WriteAllTextAsync(configPath, json);
     }
 
+    private static async Task<(string OrganizationId, string AgentApiUrl, string AuthUrl)?> LoadExistingConfigAsync(string rootPath)
+    {
+        try
+        {
+            var versionDirs = Directory.GetDirectories(rootPath)
+                .Where(d => !Path.GetFileName(d).Equals("refresh.blob", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(d => d)
+                .ToList();
+
+            if (!versionDirs.Any())
+            {
+                Console.WriteLine("⚠️ No existing version folders found.");
+                return null;
+            }
+            
+            string previousVersionDir;
+            if (versionDirs.Count == 1)
+            {
+                previousVersionDir = versionDirs[0];
+            }
+            else
+            {
+                previousVersionDir = versionDirs[1];
+            }
+            
+            var configPath = Path.Combine(previousVersionDir, "agentsettings.json");
+
+            if (!File.Exists(configPath))
+            {
+                Console.WriteLine($"⚠️ Config file not found at {configPath}");
+                return null;
+            }
+
+            Console.WriteLine($"📂 Loading config from previous version: {Path.GetFileName(previousVersionDir)}");
+            
+            var configJson = await File.ReadAllTextAsync(configPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(configJson);
+            var root = doc.RootElement;
+
+            var orgId = root.GetProperty("Agent").GetProperty("OrganizationId").GetString();
+            var agentApiUrl = root.GetProperty("AgentApi").GetProperty("Url").GetString();
+            var authUrl = root.GetProperty("Auth").GetProperty("Url").GetString();
+
+            if (string.IsNullOrWhiteSpace(orgId) || string.IsNullOrWhiteSpace(agentApiUrl) || string.IsNullOrWhiteSpace(authUrl))
+            {
+                Console.WriteLine("⚠️ Config file is missing required values.");
+                return null;
+            }
+
+            return (orgId, agentApiUrl, authUrl);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Error loading existing config: {ex.Message}");
+            return null;
+        }
+    }
+
     private static async Task<RegisterAgentApiResponse?> RegisterAgentAsync(string orgId, string workspaceId,
         RegisterAgentApiRequest input, string? apiKey)
     {
         using var client = new HttpClient();
         if (!string.IsNullOrWhiteSpace(apiKey)) client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
         var response = await client.PostAsJsonAsync(
-            $"https://agent-api.krakendeploy.com/organization/{orgId}/workspaces/{workspaceId}/agents", input);
+            $"{KRAKEN_API_URL}/organization/{orgId}/workspaces/{workspaceId}/agents", input);
         return response.IsSuccessStatusCode
             ? await response.Content.ReadFromJsonAsync<RegisterAgentApiResponse>()
             : null;

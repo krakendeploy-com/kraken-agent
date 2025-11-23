@@ -52,7 +52,7 @@ public class AgentUpdateTaskHandler : IAgentCommandTask<AgentUpdateTask>
             return;
         }
 
-        var arguments = $"--agentId {_settings.Agent.Id} --workspaceId {_settings.Agent.WorkspaceId} --debug";
+        var arguments = $"--agentId {_settings.Agent.Id} --workspaceId {_settings.Agent.WorkspaceId}";
         Console.WriteLine($"🚀 Launching updater with arguments: {arguments}");
 
         var process = new Process
