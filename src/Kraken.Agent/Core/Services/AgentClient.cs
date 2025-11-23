@@ -138,6 +138,7 @@ public class AgentClient
 
             var cpu = await SystemMetrics.GetCpuUsageAsync();
             var ram = SystemMetrics.GetRamUsageMb();
+            var ramTotal = SystemMetrics.GetTotalRamGb();
             var (diskTotal, diskFree) = SystemMetrics.GetDiskUsage();
 
             var input = new AgentNextTaskApiRequest
@@ -148,10 +149,12 @@ public class AgentClient
                 Timestamp = DateTime.UtcNow,
                 CpuUsagePercent = cpu,
                 RamUsageMb = ram,
+                RamTotalGb = ramTotal,
                 DiskTotalGb = diskTotal,
                 DiskFreeGb = diskFree,
                 OsVersion = SystemMetrics.GetOsVersion(),
-                AgentUptime = SystemMetrics.GetUptime()
+                AgentUptime = SystemMetrics.GetUptime(),
+                IpAddress = SystemMetrics.GetIpAddress()
             };
 
             var url =

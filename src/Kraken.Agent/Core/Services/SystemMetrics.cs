@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Kraken.Agent.Core.Services;
 
@@ -14,6 +16,45 @@ public static class SystemMetrics
     {
         using var proc = Process.GetCurrentProcess();
         return proc.WorkingSet64 / (1024.0 * 1024.0);
+    }
+
+    /// <summary>
+    ///     Gets the total RAM of the machine in gigabytes.
+    /// </summary>
+    public static double GetTotalRamGb()
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                // Windows: Use performance counter or WMI
+                var gcMemoryInfo = GC.GetGCMemoryInfo();
+                return gcMemoryInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                // Linux: Read /proc/meminfo
+                var memInfo = File.ReadAllText("/proc/meminfo");
+                var match = System.Text.RegularExpressions.Regex.Match(memInfo, @"MemTotal:\s+(\d+)\s+kB");
+                if (match.Success && long.TryParse(match.Groups[1].Value, out var totalKb))
+                {
+                    return totalKb / (1024.0 * 1024.0); // KB to GB
+                }
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                // macOS: Use sysctl
+                var gcMemoryInfo = GC.GetGCMemoryInfo();
+                return gcMemoryInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
+            }
+            
+            var fallbackInfo = GC.GetGCMemoryInfo();
+            return fallbackInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     /// <summary>
@@ -69,5 +110,23 @@ public static class SystemMetrics
     public static string GetUptime()
     {
         return (DateTime.Now - Process.GetCurrentProcess().StartTime).ToString(@"dd\:hh\:mm\:ss");
+    }
+
+    /// <summary>
+    ///     Gets the local IP address of the agent.
+    /// </summary>
+    public static string GetIpAddress()
+    {
+        try
+        {
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            var ipAddress = host.AddressList
+                .FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip));
+            return ipAddress?.ToString() ?? "Unknown";
+        }
+        catch
+        {
+            return "Unknown";
+        }
     }
 }
