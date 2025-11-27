@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.RegularExpressions;
 
 namespace Kraken.Agent.Core.Services;
 
@@ -31,15 +32,14 @@ public static class SystemMetrics
                 var gcMemoryInfo = GC.GetGCMemoryInfo();
                 return gcMemoryInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
             }
-            else if (OperatingSystem.IsLinux())
+
+            if (OperatingSystem.IsLinux())
             {
                 // Linux: Read /proc/meminfo
                 var memInfo = File.ReadAllText("/proc/meminfo");
-                var match = System.Text.RegularExpressions.Regex.Match(memInfo, @"MemTotal:\s+(\d+)\s+kB");
+                var match = Regex.Match(memInfo, @"MemTotal:\s+(\d+)\s+kB");
                 if (match.Success && long.TryParse(match.Groups[1].Value, out var totalKb))
-                {
                     return totalKb / (1024.0 * 1024.0); // KB to GB
-                }
             }
             else if (OperatingSystem.IsMacOS())
             {
@@ -47,7 +47,7 @@ public static class SystemMetrics
                 var gcMemoryInfo = GC.GetGCMemoryInfo();
                 return gcMemoryInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
             }
-            
+
             var fallbackInfo = GC.GetGCMemoryInfo();
             return fallbackInfo.TotalAvailableMemoryBytes / (1024.0 * 1024.0 * 1024.0);
         }

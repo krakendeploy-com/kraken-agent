@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Text;
 using Kraken.Agent.Core.Services;
 using Kraken.Agent.Core.Tokens;
 using Kraken.Agent.Models;
@@ -133,10 +134,10 @@ public class AgentDeploymentStepTaskHandler : IAgentCommandTask<AgentDeploymentS
                     {
                         await AddLogAsync($"Downloading artifact '{artifactName}' v{artifactVersion}...",
                             LogLevel.INFO);
-                        
+
                         // Download artifact using the appropriate authentication method
                         await DownloadArtifactAsync(artifact, packageUrl, filePath, platform, AddLogAsync);
-                        
+
                         await AddLogAsync($"Downloaded artifact '{artifactName}' to {filePath}", LogLevel.INFO);
                     }
 
@@ -297,9 +298,9 @@ exit 0
     {
         using var httpClient = await CreateHttpClientForArtifact(artifact, platform, logAsync);
         using var response = await httpClient.GetAsync(packageUrl, HttpCompletionOption.ResponseHeadersRead);
-        
+
         response.EnsureSuccessStatusCode();
-        
+
         // Update filename from response if available
         var responseFileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"');
         if (!string.IsNullOrWhiteSpace(responseFileName))
@@ -307,7 +308,7 @@ exit 0
             var directory = Path.GetDirectoryName(filePath);
             filePath = Path.Combine(directory!, responseFileName);
         }
-        
+
         await using var fs = File.Create(filePath);
         await response.Content.CopyToAsync(fs);
     }
@@ -321,29 +322,29 @@ exit 0
         Func<string, LogLevel, Task> logAsync)
     {
         var authType = artifact.Authentication?.Type?.ToLowerInvariant() ?? "none";
-        
+
         switch (authType)
         {
             case "internal":
             case "jwt":
                 // Use agent's own JWT token for internal artifacts
-                await logAsync($"Using JWT authentication for artifact download", LogLevel.DEBUG);
+                await logAsync("Using JWT authentication for artifact download", LogLevel.DEBUG);
                 return await CreateAuthedClientAsync(platform);
-            
+
             case "basic":
                 // Basic authentication (username/password)
-                await logAsync($"Using Basic authentication for artifact download", LogLevel.DEBUG);
+                await logAsync("Using Basic authentication for artifact download", LogLevel.DEBUG);
                 return CreateBasicAuthClient(artifact.Authentication!.Config);
-            
+
             case "apikey":
                 // API key authentication
-                await logAsync($"Using API Key authentication for artifact download", LogLevel.DEBUG);
+                await logAsync("Using API Key authentication for artifact download", LogLevel.DEBUG);
                 return CreateApiKeyAuthClient(artifact.Authentication!.Config);
-            
+
             case "none":
             default:
                 // No authentication
-                await logAsync($"Using no authentication for artifact download", LogLevel.DEBUG);
+                await logAsync("Using no authentication for artifact download", LogLevel.DEBUG);
                 return new HttpClient();
         }
     }
@@ -354,17 +355,17 @@ exit 0
     private HttpClient CreateBasicAuthClient(Dictionary<string, string>? config)
     {
         var client = new HttpClient();
-        
-        if (config != null && 
-            config.TryGetValue("Username", out var username) && 
+
+        if (config != null &&
+            config.TryGetValue("Username", out var username) &&
             config.TryGetValue("Password", out var password))
         {
             var credentials = Convert.ToBase64String(
-                System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
-            client.DefaultRequestHeaders.Authorization = 
+                Encoding.ASCII.GetBytes($"{username}:{password}"));
+            client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Basic", credentials);
         }
-        
+
         return client;
     }
 
@@ -374,23 +375,19 @@ exit 0
     private HttpClient CreateApiKeyAuthClient(Dictionary<string, string>? config)
     {
         var client = new HttpClient();
-        
+
         if (config != null)
         {
             // Support multiple API key header formats
-            if (config.TryGetValue("HeaderName", out var headerName) && 
+            if (config.TryGetValue("HeaderName", out var headerName) &&
                 config.TryGetValue("ApiKey", out var apiKey))
-            {
                 // Custom header name (e.g., "X-API-Key")
                 client.DefaultRequestHeaders.Add(headerName, apiKey);
-            }
             else if (config.TryGetValue("ApiKey", out apiKey))
-            {
                 // Default to X-API-Key header
                 client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
-            }
         }
-        
+
         return client;
     }
 }

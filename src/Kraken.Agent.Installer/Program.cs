@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Kraken.Models.Request;
 using Kraken.Models.Response;
 
@@ -11,7 +12,9 @@ namespace Kraken.Agent.Installer;
 
 internal class Program
 {
-    private const string GITHUB_RELEASE_URL_BASE = "https://github.com/krakendeploy-com/kraken-agent/releases/latest/download";
+    private const string GITHUB_RELEASE_URL_BASE =
+        "https://github.com/krakendeploy-com/kraken-agent/releases/latest/download";
+
     private const string KRAKEN_API_URL = "https://agent-api.krakendeploy.com";
     private const string KRAKEN_AUTH_URL = "https://auth.krakendeploy.com";
 
@@ -29,10 +32,10 @@ internal class Program
         }
 
         var (orgId, workspaceId, agentIdFromArgs, tags, environments, apiKey) = ParseArguments(args);
-        
+
         // Determine if this is an update (agentId provided) or fresh install (new registration)
         var isUpdate = !string.IsNullOrWhiteSpace(agentIdFromArgs);
-        
+
         var logFilePath = Path.Combine(AppContext.BaseDirectory, "kraken-install.log");
         var logWriter = new StreamWriter(logFilePath, true) { AutoFlush = true };
         var dualWriter = new DualWriter(Console.Out, logWriter);
@@ -122,13 +125,13 @@ internal class Program
             CopyFiles(agentTempFolder, installPath, true);
 
             Console.WriteLine("📝 Writing config...");
-            
+
             string configOrgId, configAgentApiUrl, configAuthUrl;
-            
+
             if (isUpdate)
             {
                 Console.WriteLine("🔐 Using existing refresh token from secure storage...");
-                
+
                 // Load existing config to preserve settings
                 var existingConfig = await LoadExistingConfigAsync(rootPath);
                 if (existingConfig == null)
@@ -136,12 +139,13 @@ internal class Program
                     Console.WriteLine("❌ Failed to load existing config. Cannot update.");
                     return 1;
                 }
-                
+
                 configOrgId = existingConfig.Value.OrganizationId;
                 configAgentApiUrl = existingConfig.Value.AgentApiUrl;
                 configAuthUrl = existingConfig.Value.AuthUrl;
-                
-                Console.WriteLine($"📋 Loaded existing config: OrgId={configOrgId}, AgentApi={configAgentApiUrl}, Auth={configAuthUrl}");
+
+                Console.WriteLine(
+                    $"📋 Loaded existing config: OrgId={configOrgId}, AgentApi={configAgentApiUrl}, Auth={configAuthUrl}");
             }
             else
             {
@@ -154,7 +158,7 @@ internal class Program
 
                 Console.WriteLine("🔐 Securing refresh token...");
                 SecureTokenStore.SaveRefreshToken(platform, rootPath, agent.AuthRefreshToken!);
-                
+
                 configOrgId = orgId!;
                 configAgentApiUrl = KRAKEN_API_URL;
                 configAuthUrl = agent.AuthUrl ?? KRAKEN_AUTH_URL;
@@ -360,7 +364,8 @@ internal class Program
         await File.WriteAllTextAsync(configPath, json);
     }
 
-    private static async Task<(string OrganizationId, string AgentApiUrl, string AuthUrl)?> LoadExistingConfigAsync(string rootPath)
+    private static async Task<(string OrganizationId, string AgentApiUrl, string AuthUrl)?> LoadExistingConfigAsync(
+        string rootPath)
     {
         try
         {
@@ -374,17 +379,13 @@ internal class Program
                 Console.WriteLine("⚠️ No existing version folders found.");
                 return null;
             }
-            
+
             string previousVersionDir;
             if (versionDirs.Count == 1)
-            {
                 previousVersionDir = versionDirs[0];
-            }
             else
-            {
                 previousVersionDir = versionDirs[1];
-            }
-            
+
             var configPath = Path.Combine(previousVersionDir, "agentsettings.json");
 
             if (!File.Exists(configPath))
@@ -394,16 +395,17 @@ internal class Program
             }
 
             Console.WriteLine($"📂 Loading config from previous version: {Path.GetFileName(previousVersionDir)}");
-            
+
             var configJson = await File.ReadAllTextAsync(configPath);
-            using var doc = System.Text.Json.JsonDocument.Parse(configJson);
+            using var doc = JsonDocument.Parse(configJson);
             var root = doc.RootElement;
 
             var orgId = root.GetProperty("Agent").GetProperty("OrganizationId").GetString();
             var agentApiUrl = root.GetProperty("AgentApi").GetProperty("Url").GetString();
             var authUrl = root.GetProperty("Auth").GetProperty("Url").GetString();
 
-            if (string.IsNullOrWhiteSpace(orgId) || string.IsNullOrWhiteSpace(agentApiUrl) || string.IsNullOrWhiteSpace(authUrl))
+            if (string.IsNullOrWhiteSpace(orgId) || string.IsNullOrWhiteSpace(agentApiUrl) ||
+                string.IsNullOrWhiteSpace(authUrl))
             {
                 Console.WriteLine("⚠️ Config file is missing required values.");
                 return null;
